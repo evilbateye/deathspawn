@@ -1,0 +1,75 @@
+CREATE TABLE model (
+	id INTEGER PRIMARY KEY,
+	name TEXT,
+	path TEXT
+);
+
+CREATE TABLE map (
+	id INTEGER PRIMARY KEY,
+	name TEXT
+);
+
+CREATE TABLE client (
+	id INTEGER PRIMARY KEY,
+	name TEXT,
+	authstring TEXT
+);
+
+CREATE TABLE save (
+	id INTEGER PRIMARY KEY,
+	x REAL, y REAL, z REAL,
+	ax REAL, ay REAL, az REAL,
+	model_id INTEGER REFERENCES model(id),
+	map_id INTEGER REFERENCES map(id),
+	client_id INTEGER REFERENCES client(id),
+	break_on_touch INTEGER DEFAULT 1,
+	break_on_pressure INTEGER DEFAULT 1
+);
+
+INSERT INTO model (name, path) VALUES ('arrow', 'models/items/ammo/ammo_arrow_single.mdl');
+INSERT INTO model (name, path) VALUES ('barricade', 'models/props_wasteland/barricade001a.mdl');
+INSERT INTO model (name, path) VALUES ('bench', 'models/props_wasteland/cafeteria_bench001a.mdl');
+INSERT INTO model (name, path) VALUES ('boat', 'models/props_canal/boat001a.mdl');
+INSERT INTO model (name, path) VALUES ('bottle1', 'models/props_junk/garbage_glassbottle001a.mdl');
+INSERT INTO model (name, path) VALUES ('bottle2', 'models/props_junk/glassbottle01a.mdl');
+INSERT INTO model (name, path) VALUES ('bust', 'models/props_combine/breenbust.mdl');
+INSERT INTO model (name, path) VALUES ('canister', 'models/props_c17/canister01a.mdl');
+INSERT INTO model (name, path) VALUES ('chainsaw', 'models/weapons/me_chainsaw/w_me_chainsaw.mdl');
+INSERT INTO model (name, path) VALUES ('chainsaw_ammo', 'models/items/ammo/ammo_gascan.mdl');
+INSERT INTO model (name, path) VALUES ('chair', 'models/props_interiors/furniture_chair01a.mdl');
+INSERT INTO model (name, path) VALUES ('cofeemug', 'models/props_junk/garbage_coffeemug001a.mdl');
+INSERT INTO model (name, path) VALUES ('colt_ammo', 'models/items/ammo/ammo_45acp.mdl');
+INSERT INTO model (name, path) VALUES ('combine_dropship', 'models/combine_dropship_container.mdl');
+INSERT INTO model (name, path) VALUES ('crate1', 'models/items/item_item_crate.mdl');
+INSERT INTO model (name, path) VALUES ('crate2', 'models/props_junk/wood_crate001a.mdl');
+INSERT INTO model (name, path) VALUES ('cz858', 'models/weapons/fa_cz858/w_fa_cz858.mdl');
+INSERT INTO model (name, path) VALUES ('cz858_ammo', 'models/items/ammo/ammo_762.mdl');
+INSERT INTO model (name, path) VALUES ('dockplank', 'models/props_wasteland/dockplank01b.mdl');
+INSERT INTO model (name, path) VALUES ('doll', 'models/props_c17/doll01.mdl');
+INSERT INTO model (name, path) VALUES ('door', 'models/props/doors/door_barricade.mdl');
+INSERT INTO model (name, path) VALUES ('drawer', 'models/props_c17/furnituredrawer001a.mdl');
+INSERT INTO model (name, path) VALUES ('fireaxe', 'models/weapons/me_axe_fire/w_me_axe_fire.mdl');
+INSERT INTO model (name, path) VALUES ('flaregun', 'models/weapons/fa_flaregun/w_fa_flaregun.mdl');
+INSERT INTO model (name, path) VALUES ('flaregun_ammo', 'models/items/ammo/ammo_flares.mdl');
+INSERT INTO model (name, path) VALUES ('fubar', 'models/weapons/me_fubar/w_me_fubar.mdl');
+INSERT INTO model (name, path) VALUES ('gascan', 'models/props/traps/cj_gascan_explosive.mdl');
+INSERT INTO model (name, path) VALUES ('glassjug', 'models/props_junk/glassjug01.mdl');
+INSERT INTO model (name, path) VALUES ('granade', 'models/weapons/grenade/w_grenade.mdl');
+INSERT INTO model (name, path) VALUES ('jae700', 'models/weapons/fa_jae700/w_fa_jae700.mdl');
+INSERT INTO model (name, path) VALUES ('marker', 'models/props_docks/channelmarker01a.mdl');
+INSERT INTO model (name, path) VALUES ('medbox', 'models/survival/item_playersupplies.mdl');
+INSERT INTO model (name, path) VALUES ('metal_panel', 'models/props_debris/metal_panel01a.mdl');
+INSERT INTO model (name, path) VALUES ('oildrum', 'models/props_c17/oildrum001_explosive.mdl');
+INSERT INTO model (name, path) VALUES ('shotgun_ammo', 'models/items/ammo/ammo_12g.mdl');
+INSERT INTO model (name, path) VALUES ('sink', 'models/props_wasteland/prison_sink001a.mdl');
+INSERT INTO model (name, path) VALUES ('sledge', 'models/weapons/me_sledge/w_me_sledge.mdl');
+INSERT INTO model (name, path) VALUES ('table1', 'models/props_wasteland/cafeteria_table001a.mdl');
+INSERT INTO model (name, path) VALUES ('table2', 'models/props_c17/furnituretable001a.mdl');
+INSERT INTO model (name, path) VALUES ('terracotta', 'models/props_junk/terracotta01.mdl');
+INSERT INTO model (name, path) VALUES ('timetable', 'models/escape_props/timetable.mdl');
+INSERT INTO model (name, path) VALUES ('tnt', 'models/weapons/exp_tnt/w_exp_tnt.mdl');
+INSERT INTO model (name, path) VALUES ('toilet', 'models/props_wasteland/prison_toilet01.mdl');
+INSERT INTO model (name, path) VALUES ('tprotato', 'models/props_combine/tprotato2.mdl');
+INSERT INTO model (name, path) VALUES ('watermelon', 'models/props_junk/watermelon01.mdl');
+INSERT INTO model (name, path) VALUES ('window', 'models/props/windows/window_notld68.mdl');
+INSERT INTO model (name, path) VALUES ('zombie_girl', 'models/nmr_zombie/zombiekid_girl.mdl');
