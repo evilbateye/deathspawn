@@ -9,6 +9,30 @@
 
 static Handle:db = INVALID_HANDLE;
 
+DB_trapTriggered(clientTableId, saveTableId)
+{
+	decl String:query[256];	
+	Format(query, sizeof(query), "SELECT * FROM traplog WHERE client_id='%d' AND save_id='%d'", clientTableId, saveTableId);
+	new Handle:qHandle = SQL_Query(db, query);
+	
+	if (qHandle == INVALID_HANDLE) {
+		
+		new String:error[256];
+		SQL_GetError(db, error, sizeof(error));
+		PrintToServer("Failed to query (error: %s)", error);
+		return;
+	}
+	
+	if (SQL_FetchRow(qHandle))
+		Format(query, sizeof(query), "UPDATE traplog SET deaths=deaths+1 WHERE client_id='%d' AND save_id='%d'", clientTableId, saveTableId);
+	else
+		Format(query, sizeof(query), "INSERT INTO traplog (client_id, save_id) VALUES('%d','%d')", clientTableId, saveTableId);
+	
+	CloseHandle(qHandle);
+	
+	if (!SQL_FastQuery(db, query)) PrintToServer("Failed to query %s", query);
+}
+
 DB_addMap(String:mapName[])
 {
 	decl String:query[256];
@@ -46,7 +70,6 @@ DB_loadMap(String:map[])
 {
 	new String:query[256];
 	
-	//fixme not sure about order of columns
 	Format(query, sizeof(query), "SELECT * FROM model \
 		JOIN save ON model.id=save.model_id \
 		JOIN map ON save.map_id=map.id \
@@ -77,7 +100,12 @@ DB_loadMap(String:map[])
 		new String:path[MAX_SIZE_PATH];
 		SQL_FetchString(qHandle, 2, path, sizeof(path));
 		
-		Spawn_spawnAtCoords(pos, angles, path, SQL_FetchInt(qHandle, 13), SQL_FetchInt(qHandle, 14));
+		new eref = Spawn_spawnAtCoords(pos, angles, path, SQL_FetchInt(qHandle, 13), SQL_FetchInt(qHandle, 14));
+		
+		new String:msg[256];
+		SQL_FetchString(qHandle, 13, msg, sizeof(msg));
+		
+		PMSG_add(eref, msg, SQL_FetchInt(qHandle, 3));
 	}
 	
 	CloseHandle(qHandle);
@@ -98,13 +126,16 @@ DB_addClient(client)
 		new String:error[256];
 		SQL_GetError(db, error, sizeof(error));
 		PrintToServer("Failed to query (error: %s)", error);
-		return;
+		return -1;
 	}
 	
 	if (SQL_FetchRow(qHandle)) {
 		
+		new clientTableId = SQL_FetchInt(qHandle, 0);
+		
 		CloseHandle(qHandle);
-		return;
+		
+		return clientTableId;
 	}
 	
 	Format(query, sizeof(query), "INSERT INTO client (name, authstring) VALUES ('%s','%s')", clientName, steamId);
@@ -114,9 +145,32 @@ DB_addClient(client)
 		new String:error[256];
 		SQL_GetError(db, error, sizeof(error));
 		PrintToServer("Failed to query (error: %s)", error);
+		CloseHandle(qHandle);
+		return -1;
 	}
 	
+	Format(query, sizeof(query), "SELECT * FROM client WHERE authstring='%s'", steamId);
+	
+	if (qHandle == INVALID_HANDLE) {
+		
+		new String:error[256];
+		SQL_GetError(db, error, sizeof(error));
+		PrintToServer("Failed to query (error: %s)", error);
+		return -1;
+	}
+	
+	if (!SQL_FetchRow(qHandle)) {
+		
+		PrintToServer("Failed to query %s", query);
+		CloseHandle(qHandle);
+		return -1;
+	}
+	
+	new clientTableId = SQL_FetchInt(qHandle, 0);
+	
 	CloseHandle(qHandle);
+	
+	return clientTableId;
 }
 
 static DB_getId(String:table[], String:whereCol[], String:whereVal[])
@@ -145,6 +199,62 @@ static DB_getId(String:table[], String:whereCol[], String:whereVal[])
 	return id;
 }
 
+DB_getString(String:str[], strLen, colidx, String:table[], val)
+{
+	decl String:query[256];
+	Format(query, sizeof(query), "SELECT * FROM %s WHERE id='%d'", table, val);
+	new Handle:qHandle = SQL_Query(db, query);
+	
+	if (qHandle == INVALID_HANDLE) {
+		
+		new String:error[256];
+		SQL_GetError(db, error, sizeof(error));
+		PrintToServer("Failed to query (error: %s)", error);
+		return;
+	}
+	
+	if (!SQL_FetchRow(qHandle)) {
+		
+		CloseHandle(qHandle);
+		PrintToServer("Failed to fetch id from %s", table);
+		return;
+	}	
+	
+	SQL_FetchString(qHandle, colidx, str, strLen);
+	
+	CloseHandle(qHandle);
+}
+
+DB_IdNamePath(String:nameOrPath[], String:name[], nameLen, String:path[], pathLen)
+{
+	decl String:query[256];
+	Format(query, sizeof(query), "SELECT * FROM model WHERE name='%s' OR path='%s'", nameOrPath, nameOrPath);	
+	new Handle:qHandle = SQL_Query(db, query);
+	
+	if (qHandle == INVALID_HANDLE) {
+		
+		new String:error[256];
+		SQL_GetError(db, error, sizeof(error));
+		PrintToServer("Failed to query (error: %s)", error);
+		return -1;
+	}
+	
+	if (!SQL_FetchRow(qHandle)) {
+		
+		CloseHandle(qHandle);
+		PrintToServer("Failed to fetch model with name %s", nameOrPath);
+		return -1;
+	}
+	
+	SQL_FetchString(qHandle, 1, name, nameLen);
+	SQL_FetchString(qHandle, 2, path, pathLen);
+	new id = SQL_FetchInt(qHandle, 0);
+	
+	CloseHandle(qHandle);
+	
+	return id;
+}
+
 DB_saveMap(String:map[], client)
 {
 	new mapId = DB_getId("map", "name", map);
@@ -154,23 +264,33 @@ DB_saveMap(String:map[], client)
 	GetClientAuthString(client, steamId, sizeof(steamId));
 	new clientId = DB_getId("client", "authstring", steamId);
 	if (clientId < 0) return;
-	
+			
 	new size = Save_size(client);
+	
 	for (new i = 0; i < size; i++) {
 		
 		new entity[2];
 		Save_at(entity, i, client);
+		
+		/* Make entity explodable in case it was spawned in normal mode */
+		DispatchKeyValue(entity[0], "spawnflags", "8240");
 		
 		new Float:pos[3];
 		GetEntPropVector(entity[0], Prop_Send, "m_vecOrigin", pos);  
 		
 		new Float:ang[3];
 		GetEntPropVector(entity[0], Prop_Data, "m_angRotation", ang);
+		
+		decl String:itemName[MAX_SIZE_NAME];
+		DB_getString(itemName, sizeof(itemName), 1, "model", entity[1]);
+		
+		decl String:playermsg[256];
+		Format(playermsg, sizeof(playermsg), "anonymous %s", itemName);
 	
 		decl String:query[256];	
-		Format(query, sizeof(query), "INSERT INTO save (x, y, z, ax, ay, az, model_id, map_id, client_id) \
-			VALUES ('%f', '%f', '%f', '%f', '%f', '%f', '%d', '%d', '%d')",
-			pos[0], pos[1], pos[2], ang[0], ang[1], ang[2], entity[1], mapId, clientId);
+		Format(query, sizeof(query), "INSERT INTO save (x, y, z, ax, ay, az, model_id, map_id, client_id, msg) \
+			VALUES ('%f', '%f', '%f', '%f', '%f', '%f', '%d', '%d', '%d', '%s')",
+			pos[0], pos[1], pos[2], ang[0], ang[1], ang[2], entity[1], mapId, clientId, playermsg);
 		
 		if (!SQL_FastQuery(db, query)) {
 		
@@ -253,36 +373,6 @@ DB_clearWholeMap(String:map[])
 	}
 	
 	CloseHandle(qHandle);
-}
-
-DB_spawnablePathFromName(String:name[], String:path[], pathLen)
-{
-	decl String:query[256];
-	Format(query, sizeof(query), "SELECT * FROM model WHERE name='%s' OR path='%s'", name, name);	
-	new Handle:qHandle = SQL_Query(db, query);
-	
-	if (qHandle == INVALID_HANDLE) {
-		
-		new String:error[256];
-		SQL_GetError(db, error, sizeof(error));
-		PrintToServer("Failed to query (error: %s)", error);
-		return -1;
-	}
-	
-	if (!SQL_FetchRow(qHandle)) {
-		
-		CloseHandle(qHandle);
-		PrintToServer("Failed to fetch model with name %s", name);
-		return -1;
-	}
-	
-	SQL_FetchString(qHandle, 2, path, pathLen);
-	
-	new id = SQL_FetchInt(qHandle, 0);
-	
-	CloseHandle(qHandle);
-	
-	return id;
 }
 
 DB_spawnableAt(index, String:name[], nameLen, String:path[] = "", pathLen = 0)
@@ -368,19 +458,30 @@ DB_setUp()
 	SQL_Query(db, "CREATE TABLE IF NOT EXISTS map(\
 		id INTEGER PRIMARY KEY,\
 		name TEXT)");
-	
+		
+	SQL_Query(db, "CREATE TABLE IF NOT EXISTS client(\
+		id INTEGER PRIMARY KEY,\
+		name TEXT,\
+		authstring TEXT)");
+		
 	SQL_Query(db, "CREATE TABLE IF NOT EXISTS save(\
 		id INTEGER PRIMARY KEY,\
 		x REAL,	y REAL,	z REAL,\
 		ax REAL, ay REAL, az REAL,\
 		model_id INTEGER REFERENCES model(id) ON DELETE CASCADE ON UPDATE CASCADE,\
 		map_id INTEGER REFERENCES map(id) ON DELETE CASCADE ON UPDATE CASCADE,\
-		client_id INTEGER REFERENCES client(id))");
+		client_id INTEGER REFERENCES client(id) ON DELETE CASCADE ON UPDATE CASCADE,\
+		msg TEXT,\
+		break_on_touch INTEGER DEFAULT 1,\
+		break_on_pressure INTEGER DEFAULT 1\
+		)");
 		
-	SQL_Query(db, "CREATE TABLE IF NOT EXISTS client(\
-		id INTEGER PRIMARY KEY,\
-		name TEXT,\
-		authstring TEXT)");
+	SQL_Query(db, "CREATE TABLE IF NOT EXISTS traplog (\
+		client_id INTEGER REFERENCES client(id) ON DELETE CASCADE ON UPDATE CASCADE,\
+		save_id INTEGER REFERENCES save(id) ON DELETE CASCADE ON UPDATE CASCADE,\
+		deaths INTEGER DEFAULT 0,\
+		primary key (client_id, save_id)\
+	)");
 	
 	CloseHandle(kv);
 }

@@ -58,23 +58,18 @@ Save_add(eIndex, eId, client)
 	PushArrayCell(mContainer[client][1], eId);
 }
 
-Save_delete(eIndex)
+Save_delete(eIndex, client)
 {
-	new bool:end = false;
+	new size = Save_size(client);
 
-	for (new i = 1; i <= MAXPLAYERS && !end; i++) {
-	
-		new size = Save_size(i);
-	
-		for (new j = 0; j < size; j++) {
-					
-			if (GetArrayCell(mContainer[i][0], j) != eIndex) continue;
+	for (new i = 0; i < size; i++) {
 				
-			RemoveFromArray(mContainer[i][0], j);
-			RemoveFromArray(mContainer[i][1], j);
+		if (GetArrayCell(mContainer[client][0], i) != eIndex) continue;
 			
-			end = true;
-			break;
-		}
+		RemoveFromArray(mContainer[client][0], i);
+		
+		RemoveFromArray(mContainer[client][1], i);
+		
+		return;
 	}
 }

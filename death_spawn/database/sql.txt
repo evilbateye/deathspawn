@@ -12,18 +12,26 @@ CREATE TABLE map (
 CREATE TABLE client (
 	id INTEGER PRIMARY KEY,
 	name TEXT,
-	authstring TEXT
+	authstring TEXT	
 );
 
 CREATE TABLE save (
 	id INTEGER PRIMARY KEY,
 	x REAL, y REAL, z REAL,
 	ax REAL, ay REAL, az REAL,
-	model_id INTEGER REFERENCES model(id),
-	map_id INTEGER REFERENCES map(id),
-	client_id INTEGER REFERENCES client(id),
+	model_id INTEGER REFERENCES model(id) ON DELETE CASCADE ON UPDATE CASCADE,
+	map_id INTEGER REFERENCES map(id) ON DELETE CASCADE ON UPDATE CASCADE,
+	client_id INTEGER REFERENCES client(id) ON DELETE CASCADE ON UPDATE CASCADE,
+	msg TEXT,
 	break_on_touch INTEGER DEFAULT 1,
 	break_on_pressure INTEGER DEFAULT 1
+);
+
+CREATE TABLE traplog (
+	client_id INTEGER REFERENCES client(id) ON DELETE CASCADE ON UPDATE CASCADE,
+	save_id INTEGER REFERENCES save(id) ON DELETE CASCADE ON UPDATE CASCADE,
+	deaths INTEGER DEFAULT 0,
+	primary key (client_id, save_id)
 );
 
 INSERT INTO model (name, path) VALUES ('arrow', 'models/items/ammo/ammo_arrow_single.mdl');

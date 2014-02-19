@@ -9,7 +9,7 @@
 #define DEFAULT_MODEL "models/props_junk/watermelon01.mdl"
 
 //Command to spawn explosive object
-Spawn_spawnAtCursor(index, Client)
+Spawn_spawnAtCursor(index, Client, breakOnTouch, breakOnPressure)
 {
 	//Get spawnable from db
 	new String:spawnablePath[MAX_SIZE_PATH], String:spawnableName[MAX_SIZE_NAME];
@@ -18,10 +18,10 @@ Spawn_spawnAtCursor(index, Client)
 	
 	if (spawnableId < 0) return;
 	
-	Spawn_spawnAtCursorFromPath(spawnablePath, Client, spawnableId);
+	Spawn_spawnAtCursorFromPath(spawnableName, spawnablePath, Client, spawnableId, breakOnTouch, breakOnPressure);
 }
 
-Spawn_spawnAtCursorFromPath(String:path[], Client, id = -1)
+Spawn_spawnAtCursorFromPath(String:itemName[], String:itemPath[], Client, id, breakOnTouch, breakOnPressure)
 {
 	if (GetUserAdmin(Client) != INVALID_ADMIN_ID) {
 			
@@ -39,9 +39,17 @@ Spawn_spawnAtCursorFromPath(String:path[], Client, id = -1)
 	FurnitureOrigin[1] = pos[1];
 	FurnitureOrigin[2] = (pos[2] + 15);
 	
-	new eIndex = Spawn_spawnAtCoords(FurnitureOrigin, AbsAngles, path);
+	new eIndex = Spawn_spawnAtCoords(FurnitureOrigin, AbsAngles, itemPath, breakOnTouch, breakOnPressure);
 	
-	if (id >= 0) Save_add(eIndex, id, Client);
+	if (id >= 0) {
+		
+		Save_add(eIndex, id, Client);	
+		
+		new String:msg[256];
+		Format(msg, sizeof(msg), "anonymous %s", itemName);
+		
+		PMSG_add(eIndex, msg, -1);
+	}
 	
 	//Log
 	decl String:Name[255], String:SteamId[255];
@@ -51,8 +59,8 @@ Spawn_spawnAtCursorFromPath(String:path[], Client, id = -1)
 	PrintToServer("[Death Spawn] Client %s <%s> spawned an object!", SteamId, Name);
 }
 
-Spawn_spawnAtCoords(Float:pos[3], Float:angles[3], String:path[], breakOnTouch = 1, breakOnPressure = 1)
-{			
+Spawn_spawnAtCoords(Float:pos[3], Float:angles[3], String:path[], breakOnTouch, breakOnPressure)
+{
 	//Spawn stuff:	
 	new Stuff = CreateEntityByName("prop_physics_override");
 	
