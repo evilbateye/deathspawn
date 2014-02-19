@@ -32,6 +32,29 @@ PMSG_add(eref, String:msg[], sid)
 	SDKHook(eref, SDKHook_OnTakeDamagePost, OnTakeDamage_Post);	
 }
 
+PMSG_update(eRef, sid)
+{
+	new size = GetArraySize(hPMSGArr);
+	
+	for (new i = 0; i < size; i++) {
+	
+		decl pmsg[PlayerMsgEn];
+		
+		GetArrayArray(hPMSGArr, i, pmsg[0]);
+		
+		if (pmsg[entityRef] != eRef) continue;
+		
+		
+		pmsg[saveId] = sid
+		
+		SetArrayArray(hPMSGArr, i, pmsg[0]);
+				
+		return i;
+	}
+	
+	return -1;
+}
+
 PMSG_del(eref, String:msg[], msgLen)
 {
 	new size = GetArraySize(hPMSGArr);
@@ -55,6 +78,11 @@ PMSG_del(eref, String:msg[], msgLen)
 	}
 	
 	return -1;
+}
+
+PMSG_clear()
+{
+	ClearArray(hPMSGArr);
 }
 
 PMSG_close()

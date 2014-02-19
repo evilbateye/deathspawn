@@ -54,6 +54,8 @@ public Action:EventRomShot(Handle:event, const String:name[], bool:dontBroadcast
 	
 	Save_clearAll();
 	
+	PMSG_clear();
+	
 	return Plugin_Continue;
 }
 
@@ -415,7 +417,13 @@ public Action:ConsoleCommand_SpawnExploding(Client, args)
 		
 	new id = DB_IdNamePath(arg1, name, sizeof(name), path, sizeof(path));
 		
-	Spawn_spawnAtCursorFromPath(name, path, Client, id, 1, 1);
+	if (id < 0) {
+		
+		Spawn_extractNameFromPath(arg1, name, sizeof(name));
+		
+		Spawn_spawnAtCursorFromPath(name, arg1, Client, -1, 1, 1);
+		
+	} else Spawn_spawnAtCursorFromPath(name, path, Client, id, 1, 1);
 	
 	return Plugin_Handled;
 }
@@ -427,8 +435,14 @@ public Action:ConsoleCommand_SpawnNormal(Client, args)
 	if (args >= 1) GetCmdArg(1, arg1, sizeof(arg1));
 	
 	new id = DB_IdNamePath(arg1, name, sizeof(name), path, sizeof(path));
+	
+	if (id < 0) {
 		
-	Spawn_spawnAtCursorFromPath(name, path, Client, id, id < 0, id < 0);
+		Spawn_extractNameFromPath(arg1, name, sizeof(name));
+		
+		Spawn_spawnAtCursorFromPath(name, arg1, Client, -1, 1, 1);
+		
+	} else Spawn_spawnAtCursorFromPath(name, path, Client, id, 0, 0);
 	
 	return Plugin_Handled;
 }

@@ -9,19 +9,58 @@
 
 static Handle:db = INVALID_HANDLE;
 
+bool:DB_fetchNext(Handle:h, String:query[])
+{
+	if (SQL_FetchRow(h)) return true;
+		
+	PrintToServer("Failed to query %s", query);
+	
+	CloseHandle(h);
+	
+	return false;
+	
+}
+
+DB_printErr()
+{
+	new String:error[256];
+	
+	SQL_GetError(db, error, sizeof(error));
+	
+	PrintToServer("Failed to query (error: %s)", error);
+}
+
+bool:DB_isOk(Handle:h)
+{
+	if (h != INVALID_HANDLE) return true;
+		
+	DB_printErr();
+	
+	return false;
+}
+
+DB_lastInsertedRow()
+{
+	new Handle:qHandle = SQL_Query(db, "SELECT last_insert_rowid()");
+	
+	if (!DB_isOk(qHandle)) return -1;
+	
+	if (!DB_fetchNext(qHandle, "SELECT last_insert_rowid()")) return -1;
+				
+	new lastRow = SQL_FetchInt(qHandle, 0);
+	
+	CloseHandle(qHandle);
+	
+	return lastRow;
+}
+
 DB_trapTriggered(clientTableId, saveTableId)
 {
 	decl String:query[256];	
 	Format(query, sizeof(query), "SELECT * FROM traplog WHERE client_id='%d' AND save_id='%d'", clientTableId, saveTableId);
 	new Handle:qHandle = SQL_Query(db, query);
 	
-	if (qHandle == INVALID_HANDLE) {
-		
-		new String:error[256];
-		SQL_GetError(db, error, sizeof(error));
-		PrintToServer("Failed to query (error: %s)", error);
-		return;
-	}
+	if (!DB_isOk(qHandle)) return;
 	
 	if (SQL_FetchRow(qHandle))
 		Format(query, sizeof(query), "UPDATE traplog SET deaths=deaths+1 WHERE client_id='%d' AND save_id='%d'", clientTableId, saveTableId);
@@ -41,29 +80,20 @@ DB_addMap(String:mapName[])
 	
 	new Handle:qHandle = SQL_Query(db, query);
 	
-	if (qHandle == INVALID_HANDLE) {
-		
-		new String:error[256];
-		SQL_GetError(db, error, sizeof(error));
-		PrintToServer("Failed to query (error: %s)", error);
-		return;
-	}
+	if (!DB_isOk(qHandle)) return;
 	
 	if (SQL_FetchRow(qHandle)) {
-		CloseHandle(qHandle);
-		return;
-	}
-	
-	Format(query, sizeof(query), "INSERT INTO map (name) VALUES ('%s')", mapName);
-	
-	if (!SQL_FastQuery(db, query)) {
 		
-		new String:error[256];
-		SQL_GetError(db, error, sizeof(error));
-		PrintToServer("Failed to query (error: %s)", error);
+		CloseHandle(qHandle);
+		
+		return;
 	}
 	
 	CloseHandle(qHandle);
+			
+	Format(query, sizeof(query), "INSERT INTO map (name) VALUES ('%s')", mapName);
+	
+	if (!SQL_FastQuery(db, query)) DB_printErr();	
 }
 
 DB_loadMap(String:map[])
@@ -77,13 +107,7 @@ DB_loadMap(String:map[])
 	
 	new Handle:qHandle = SQL_Query(db, query);
 	
-	if (qHandle == INVALID_HANDLE) {
-		
-		new String:error[256];
-		SQL_GetError(db, error, sizeof(error));
-		PrintToServer("Failed to query (error: %s)", error);
-		return;
-	}
+	if (!DB_isOk(qHandle)) return;
 	
 	while (SQL_FetchRow(qHandle)) {
 		
@@ -121,13 +145,7 @@ DB_addClient(client)
 	
 	new Handle:qHandle = SQL_Query(db, query);
 	
-	if (qHandle == INVALID_HANDLE) {
-		
-		new String:error[256];
-		SQL_GetError(db, error, sizeof(error));
-		PrintToServer("Failed to query (error: %s)", error);
-		return -1;
-	}
+	if (!DB_isOk(qHandle)) return -1;
 	
 	if (SQL_FetchRow(qHandle)) {
 		
@@ -138,39 +156,22 @@ DB_addClient(client)
 		return clientTableId;
 	}
 	
+	CloseHandle(qHandle);
+			
 	Format(query, sizeof(query), "INSERT INTO client (name, authstring) VALUES ('%s','%s')", clientName, steamId);
 	
 	if (!SQL_FastQuery(db, query)) {
 		
-		new String:error[256];
-		SQL_GetError(db, error, sizeof(error));
-		PrintToServer("Failed to query (error: %s)", error);
-		CloseHandle(qHandle);
-		return -1;
-	}
-	
-	Format(query, sizeof(query), "SELECT * FROM client WHERE authstring='%s'", steamId);
-	
-	if (qHandle == INVALID_HANDLE) {
+		DB_printErr();
 		
-		new String:error[256];
-		SQL_GetError(db, error, sizeof(error));
-		PrintToServer("Failed to query (error: %s)", error);
 		return -1;
 	}
 	
-	if (!SQL_FetchRow(qHandle)) {
+	new lastRow = DB_lastInsertedRow();
 		
-		PrintToServer("Failed to query %s", query);
-		CloseHandle(qHandle);
-		return -1;
-	}
+	if (lastRow < 0) return -1;
 	
-	new clientTableId = SQL_FetchInt(qHandle, 0);
-	
-	CloseHandle(qHandle);
-	
-	return clientTableId;
+	return lastRow;
 }
 
 static DB_getId(String:table[], String:whereCol[], String:whereVal[])
@@ -179,23 +180,14 @@ static DB_getId(String:table[], String:whereCol[], String:whereVal[])
 	Format(query, sizeof(query), "SELECT * FROM %s WHERE %s='%s'", table, whereCol, whereVal);
 	new Handle:qHandle = SQL_Query(db, query);
 	
-	if (qHandle == INVALID_HANDLE) {
-		
-		new String:error[256];
-		SQL_GetError(db, error, sizeof(error));
-		PrintToServer("Failed to query (error: %s)", error);
-		return -1;
-	}
+	if (!DB_isOk(qHandle)) return -1;
 	
-	if (!SQL_FetchRow(qHandle)) {
-		
-		CloseHandle(qHandle);
-		PrintToServer("Failed to fetch %s from %s", whereVal, table);
-		return -1;
-	}
-	
+	if (!DB_fetchNext(qHandle, query)) return -1;
+			
 	new id = SQL_FetchInt(qHandle, 0);
+	
 	CloseHandle(qHandle);
+	
 	return id;
 }
 
@@ -205,21 +197,10 @@ DB_getString(String:str[], strLen, colidx, String:table[], val)
 	Format(query, sizeof(query), "SELECT * FROM %s WHERE id='%d'", table, val);
 	new Handle:qHandle = SQL_Query(db, query);
 	
-	if (qHandle == INVALID_HANDLE) {
-		
-		new String:error[256];
-		SQL_GetError(db, error, sizeof(error));
-		PrintToServer("Failed to query (error: %s)", error);
-		return;
-	}
+	if (!DB_isOk(qHandle)) return;
 	
-	if (!SQL_FetchRow(qHandle)) {
-		
-		CloseHandle(qHandle);
-		PrintToServer("Failed to fetch id from %s", table);
-		return;
-	}	
-	
+	if (!DB_fetchNext(qHandle, query)) return;
+			
 	SQL_FetchString(qHandle, colidx, str, strLen);
 	
 	CloseHandle(qHandle);
@@ -231,21 +212,10 @@ DB_IdNamePath(String:nameOrPath[], String:name[], nameLen, String:path[], pathLe
 	Format(query, sizeof(query), "SELECT * FROM model WHERE name='%s' OR path='%s'", nameOrPath, nameOrPath);	
 	new Handle:qHandle = SQL_Query(db, query);
 	
-	if (qHandle == INVALID_HANDLE) {
-		
-		new String:error[256];
-		SQL_GetError(db, error, sizeof(error));
-		PrintToServer("Failed to query (error: %s)", error);
-		return -1;
-	}
+	if (!DB_isOk(qHandle)) return -1;
 	
-	if (!SQL_FetchRow(qHandle)) {
-		
-		CloseHandle(qHandle);
-		PrintToServer("Failed to fetch model with name %s", nameOrPath);
-		return -1;
-	}
-	
+	if (!DB_fetchNext(qHandle, query)) return -1;
+			
 	SQL_FetchString(qHandle, 1, name, nameLen);
 	SQL_FetchString(qHandle, 2, path, pathLen);
 	new id = SQL_FetchInt(qHandle, 0);
@@ -294,10 +264,16 @@ DB_saveMap(String:map[], client)
 		
 		if (!SQL_FastQuery(db, query)) {
 		
-			new String:error[256];
-			SQL_GetError(db, error, sizeof(error));
-			PrintToServer("Failed to query (error: %s)", error);
+			DB_printErr();
+			
+			continue;
 		}
+		
+		new lastRow = DB_lastInsertedRow();
+		
+		if (lastRow < 0) continue;
+		
+		PMSG_update(entity[0], lastRow);
 	}
 	
 	Save_clear(client);
@@ -315,13 +291,7 @@ DB_clearMap(String:map[], client)
 	
 	new Handle:qHandle = SQL_Query(db, query);
 	
-	if (qHandle == INVALID_HANDLE) {
-		
-		new String:error[256];
-		SQL_GetError(db, error, sizeof(error));
-		PrintToServer("Failed to query (error: %s)", error);
-		return;
-	}
+	if (!DB_isOk(qHandle)) return;
 	
 	while (SQL_FetchRow(qHandle)) {
 		
@@ -329,12 +299,7 @@ DB_clearMap(String:map[], client)
 		
 		Format(query, sizeof(query), "DELETE FROM save WHERE id='%d'", saveId);
 		
-		if (!SQL_FastQuery(db, query)) {
-			
-			new String:error[256];
-			SQL_GetError(db, error, sizeof(error));
-			PrintToServer("Failed to query (error: %s)", error);
-		}
+		if (!SQL_FastQuery(db, query)) DB_printErr();
 	}
 	
 	CloseHandle(qHandle);
@@ -350,13 +315,7 @@ DB_clearWholeMap(String:map[])
 	
 	new Handle:qHandle = SQL_Query(db, query);
 	
-	if (qHandle == INVALID_HANDLE) {
-		
-		new String:error[256];
-		SQL_GetError(db, error, sizeof(error));
-		PrintToServer("Failed to query (error: %s)", error);
-		return;
-	}
+	if (!DB_isOk(qHandle)) return;
 	
 	while (SQL_FetchRow(qHandle)) {
 		
@@ -364,12 +323,7 @@ DB_clearWholeMap(String:map[])
 		
 		Format(query, sizeof(query), "DELETE FROM save WHERE id='%d'", saveId);
 		
-		if (!SQL_FastQuery(db, query)) {
-			
-			new String:error[256];
-			SQL_GetError(db, error, sizeof(error));
-			PrintToServer("Failed to query (error: %s)", error);
-		}
+		if (!SQL_FastQuery(db, query)) DB_printErr();
 	}
 	
 	CloseHandle(qHandle);
@@ -383,21 +337,10 @@ DB_spawnableAt(index, String:name[], nameLen, String:path[] = "", pathLen = 0)
 	
 	new Handle:qHandle = SQL_Query(db, query);
 	
-	if (qHandle == INVALID_HANDLE) {
-		
-		new String:error[256];
-		SQL_GetError(db, error, sizeof(error));
-		PrintToServer("Failed to query (error: %s)", error);
-		return -1;
-	}
+	if (!DB_isOk(qHandle)) return -1;
 	
-	if (!SQL_FetchRow(qHandle)) {
-		
-		CloseHandle(qHandle);
-		PrintToServer("Failed to fetch row %d", index);
-		return -1;
-	}
-	
+	if (!DB_fetchNext(qHandle, query)) return -1;
+			
 	SQL_FetchString(qHandle, 1, name, nameLen);
 	
 	if (pathLen) SQL_FetchString(qHandle, 2, path, pathLen);
@@ -413,13 +356,7 @@ DB_spawnableCount()
 {
 	new Handle:qHandle = SQL_Query(db, "SELECT * FROM model");
 	
-	if (qHandle == INVALID_HANDLE) {
-		
-		new String:error[256];
-		SQL_GetError(db, error, sizeof(error));
-		PrintToServer("Failed to query (error: %s)", error);
-		return 0;
-	}
+	if (!DB_isOk(qHandle)) return 0;
 	
 	new count = SQL_GetRowCount(qHandle);
 	
@@ -432,20 +369,22 @@ DB_setUp()
 {
 	if (db != INVALID_HANDLE) return;
 	
-	new String:error[256];	
+	new String:error[256];
+	
 	new Handle:kv = CreateKeyValues("uniqueRandomString");
 	
 	//Establish connection
 	KvSetString(kv, "driver", "sqlite");
 	KvSetString(kv, "database", DATABASE_NAME);
 	
-	//FIXME foreign keys=true, not sure if needed or how to input during connection
 	db = SQL_ConnectCustom(kv, error, sizeof(error), true);
 	
 	if (db == INVALID_HANDLE) {
 		
 		CloseHandle(kv);
+		
 		PrintToServer("[Death Spawn] DB connection error - %s.", error);
+		
 		return;
 	}
 	

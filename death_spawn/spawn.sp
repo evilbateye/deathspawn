@@ -8,6 +8,20 @@
 
 #define DEFAULT_MODEL "models/props_junk/watermelon01.mdl"
 
+Spawn_extractNameFromPath(String:path[], String:name[], nameLen)
+{
+	new read = 0, ptr = 0;
+	
+	while (read > -1) {
+		
+		ptr += read;
+		
+		read = SplitString(path[read], "/", "", 0);
+	}
+	
+	strcopy(name, nameLen, path[ptr]);
+}
+
 //Command to spawn explosive object
 Spawn_spawnAtCursor(index, Client, breakOnTouch, breakOnPressure)
 {
@@ -41,15 +55,11 @@ Spawn_spawnAtCursorFromPath(String:itemName[], String:itemPath[], Client, id, br
 	
 	new eIndex = Spawn_spawnAtCoords(FurnitureOrigin, AbsAngles, itemPath, breakOnTouch, breakOnPressure);
 	
-	if (id >= 0) {
-		
-		Save_add(eIndex, id, Client);	
-		
-		new String:msg[256];
-		Format(msg, sizeof(msg), "anonymous %s", itemName);
-		
-		PMSG_add(eIndex, msg, -1);
-	}
+	if (id >= 0) Save_add(eIndex, id, Client);
+	
+	new String:msg[256];
+	Format(msg, sizeof(msg), "anonymous %s", itemName);
+	PMSG_add(eIndex, msg, -1);
 	
 	//Log
 	decl String:Name[255], String:SteamId[255];
