@@ -23,14 +23,16 @@ CREATE TABLE save (
 	map_id INTEGER REFERENCES map(id) ON DELETE CASCADE ON UPDATE CASCADE,
 	client_id INTEGER REFERENCES client(id) ON DELETE CASCADE ON UPDATE CASCADE,
 	msg TEXT,
-	break_on_touch INTEGER DEFAULT 1,
-	break_on_pressure INTEGER DEFAULT 1
+	health INTEGER,
+	damage INTEGER,
+	radius INTEGER,
+	break_on_touch INTEGER
 );
 
 CREATE TABLE traplog (
 	client_id INTEGER REFERENCES client(id) ON DELETE CASCADE ON UPDATE CASCADE,
 	save_id INTEGER REFERENCES save(id) ON DELETE CASCADE ON UPDATE CASCADE,
-	deaths INTEGER DEFAULT 0,
+	trigger_count INTEGER DEFAULT 1,
 	primary key (client_id, save_id)
 );
 

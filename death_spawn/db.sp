@@ -9,93 +9,6 @@
 
 static Handle:db = INVALID_HANDLE;
 
-bool:DB_fetchNext(Handle:h, String:query[])
-{
-	if (SQL_FetchRow(h)) return true;
-		
-	PrintToServer("Failed to query %s", query);
-	
-	CloseHandle(h);
-	
-	return false;
-	
-}
-
-DB_printErr()
-{
-	new String:error[256];
-	
-	SQL_GetError(db, error, sizeof(error));
-	
-	PrintToServer("Failed to query (error: %s)", error);
-}
-
-bool:DB_isOk(Handle:h)
-{
-	if (h != INVALID_HANDLE) return true;
-		
-	DB_printErr();
-	
-	return false;
-}
-
-DB_lastInsertedRow()
-{
-	new Handle:qHandle = SQL_Query(db, "SELECT last_insert_rowid()");
-	
-	if (!DB_isOk(qHandle)) return -1;
-	
-	if (!DB_fetchNext(qHandle, "SELECT last_insert_rowid()")) return -1;
-				
-	new lastRow = SQL_FetchInt(qHandle, 0);
-	
-	CloseHandle(qHandle);
-	
-	return lastRow;
-}
-
-DB_trapTriggered(clientTableId, saveTableId)
-{
-	decl String:query[256];	
-	Format(query, sizeof(query), "SELECT * FROM traplog WHERE client_id='%d' AND save_id='%d'", clientTableId, saveTableId);
-	new Handle:qHandle = SQL_Query(db, query);
-	
-	if (!DB_isOk(qHandle)) return;
-	
-	if (SQL_FetchRow(qHandle))
-		Format(query, sizeof(query), "UPDATE traplog SET deaths=deaths+1 WHERE client_id='%d' AND save_id='%d'", clientTableId, saveTableId);
-	else
-		Format(query, sizeof(query), "INSERT INTO traplog (client_id, save_id) VALUES('%d','%d')", clientTableId, saveTableId);
-	
-	CloseHandle(qHandle);
-	
-	if (!SQL_FastQuery(db, query)) PrintToServer("Failed to query %s", query);
-}
-
-DB_addMap(String:mapName[])
-{
-	decl String:query[256];
-	
-	Format(query, sizeof(query), "SELECT * FROM map WHERE name='%s'", mapName);
-	
-	new Handle:qHandle = SQL_Query(db, query);
-	
-	if (!DB_isOk(qHandle)) return;
-	
-	if (SQL_FetchRow(qHandle)) {
-		
-		CloseHandle(qHandle);
-		
-		return;
-	}
-	
-	CloseHandle(qHandle);
-			
-	Format(query, sizeof(query), "INSERT INTO map (name) VALUES ('%s')", mapName);
-	
-	if (!SQL_FastQuery(db, query)) DB_printErr();	
-}
-
 DB_loadMap(String:map[])
 {
 	new String:query[256];
@@ -107,7 +20,7 @@ DB_loadMap(String:map[])
 	
 	new Handle:qHandle = SQL_Query(db, query);
 	
-	if (!DB_isOk(qHandle)) return;
+	if (!DB_isOk(qHandle, query)) return;
 	
 	while (SQL_FetchRow(qHandle)) {
 		
@@ -124,105 +37,24 @@ DB_loadMap(String:map[])
 		new String:path[MAX_SIZE_PATH];
 		SQL_FetchString(qHandle, 2, path, sizeof(path));
 		
-		new eref = Spawn_spawnAtCoords(pos, angles, path, SQL_FetchInt(qHandle, 13), SQL_FetchInt(qHandle, 14));
+		new eref = Spawn_spawnAtCoords(pos, angles, path, SQL_FetchInt(qHandle, 14));
 		
 		new String:msg[256];
 		SQL_FetchString(qHandle, 13, msg, sizeof(msg));
 		
-		PMSG_add(eref, msg, SQL_FetchInt(qHandle, 3));
+		new saveId = SQL_FetchInt(qHandle, 3);
+		
+		//PrintToChatAll("[DS] spawning eref:%d saveid:%d msg:%s", eref, saveId, msg);
+		
+		PMSG_add(eref, msg, saveId, SQL_FetchInt(qHandle, 15), SQL_FetchInt(qHandle, 16), bool:SQL_FetchInt(qHandle, 17));
+		
+		new String:modelname[MAX_SIZE_NAME];
+		SQL_FetchString(qHandle, 1, modelname, sizeof(modelname));
+		
+		//PrintToChatAll( "[DS] loading to PMSG eref:%d msg:%s save.id:%d model.id:%d model.name:%s", eref, msg, saveId, SQL_FetchInt(qHandle, 0), modelname);
 	}
 	
 	CloseHandle(qHandle);
-}
-
-DB_addClient(client)
-{
-	decl String:steamId[256], String:query[256], String:clientName[256];
-	GetClientAuthString(client, steamId, sizeof(steamId));
-	GetClientName(client, clientName, sizeof(clientName));
-	
-	Format(query, sizeof(query), "SELECT * FROM client WHERE authstring='%s'", steamId);
-	
-	new Handle:qHandle = SQL_Query(db, query);
-	
-	if (!DB_isOk(qHandle)) return -1;
-	
-	if (SQL_FetchRow(qHandle)) {
-		
-		new clientTableId = SQL_FetchInt(qHandle, 0);
-		
-		CloseHandle(qHandle);
-		
-		return clientTableId;
-	}
-	
-	CloseHandle(qHandle);
-			
-	Format(query, sizeof(query), "INSERT INTO client (name, authstring) VALUES ('%s','%s')", clientName, steamId);
-	
-	if (!SQL_FastQuery(db, query)) {
-		
-		DB_printErr();
-		
-		return -1;
-	}
-	
-	new lastRow = DB_lastInsertedRow();
-		
-	if (lastRow < 0) return -1;
-	
-	return lastRow;
-}
-
-static DB_getId(String:table[], String:whereCol[], String:whereVal[])
-{
-	decl String:query[256];
-	Format(query, sizeof(query), "SELECT * FROM %s WHERE %s='%s'", table, whereCol, whereVal);
-	new Handle:qHandle = SQL_Query(db, query);
-	
-	if (!DB_isOk(qHandle)) return -1;
-	
-	if (!DB_fetchNext(qHandle, query)) return -1;
-			
-	new id = SQL_FetchInt(qHandle, 0);
-	
-	CloseHandle(qHandle);
-	
-	return id;
-}
-
-DB_getString(String:str[], strLen, colidx, String:table[], val)
-{
-	decl String:query[256];
-	Format(query, sizeof(query), "SELECT * FROM %s WHERE id='%d'", table, val);
-	new Handle:qHandle = SQL_Query(db, query);
-	
-	if (!DB_isOk(qHandle)) return;
-	
-	if (!DB_fetchNext(qHandle, query)) return;
-			
-	SQL_FetchString(qHandle, colidx, str, strLen);
-	
-	CloseHandle(qHandle);
-}
-
-DB_IdNamePath(String:nameOrPath[], String:name[], nameLen, String:path[], pathLen)
-{
-	decl String:query[256];
-	Format(query, sizeof(query), "SELECT * FROM model WHERE name='%s' OR path='%s'", nameOrPath, nameOrPath);	
-	new Handle:qHandle = SQL_Query(db, query);
-	
-	if (!DB_isOk(qHandle)) return -1;
-	
-	if (!DB_fetchNext(qHandle, query)) return -1;
-			
-	SQL_FetchString(qHandle, 1, name, nameLen);
-	SQL_FetchString(qHandle, 2, path, pathLen);
-	new id = SQL_FetchInt(qHandle, 0);
-	
-	CloseHandle(qHandle);
-	
-	return id;
 }
 
 DB_saveMap(String:map[], client)
@@ -239,33 +71,29 @@ DB_saveMap(String:map[], client)
 	
 	for (new i = 0; i < size; i++) {
 		
-		new entity[2];
-		Save_at(entity, i, client);
-		
-		/* Make entity explodable in case it was spawned in normal mode */
-		DispatchKeyValue(entity[0], "spawnflags", "8240");
-		
+		new bool:breakOnTouch;
+		new eref, eid, health, damage, radius;
+		Save_at(i, client, eref, eid, health, damage, radius, breakOnTouch);
+										
 		new Float:pos[3];
-		GetEntPropVector(entity[0], Prop_Send, "m_vecOrigin", pos);  
+		GetEntPropVector(eref, Prop_Send, "m_vecOrigin", pos);  
 		
 		new Float:ang[3];
-		GetEntPropVector(entity[0], Prop_Data, "m_angRotation", ang);
+		GetEntPropVector(eref, Prop_Data, "m_angRotation", ang);
 		
 		decl String:itemName[MAX_SIZE_NAME];
-		DB_getString(itemName, sizeof(itemName), 1, "model", entity[1]);
+		DB_getString(itemName, sizeof(itemName), 1, "model", eid);
 		
 		decl String:playermsg[256];
 		Format(playermsg, sizeof(playermsg), "anonymous %s", itemName);
 	
-		decl String:query[256];	
-		Format(query, sizeof(query), "INSERT INTO save (x, y, z, ax, ay, az, model_id, map_id, client_id, msg) \
-			VALUES ('%f', '%f', '%f', '%f', '%f', '%f', '%d', '%d', '%d', '%s')",
-			pos[0], pos[1], pos[2], ang[0], ang[1], ang[2], entity[1], mapId, clientId, playermsg);
-		
+		decl String:query[512];	
+		Format(query, sizeof(query), "INSERT INTO save (x, y, z, ax, ay, az, model_id, map_id, client_id, msg, health, damage, radius, break_on_touch) \
+			VALUES ('%f', '%f', '%f', '%f', '%f', '%f', '%d', '%d', '%d', '%s', '%d', '%d', '%d', '%d')",
+			pos[0], pos[1], pos[2], ang[0], ang[1], ang[2], eid, mapId, clientId, playermsg, health, damage, radius, breakOnTouch);
+				
 		if (!SQL_FastQuery(db, query)) {
-		
-			DB_printErr();
-			
+			DB_printErr(query);
 			continue;
 		}
 		
@@ -273,7 +101,9 @@ DB_saveMap(String:map[], client)
 		
 		if (lastRow < 0) continue;
 		
-		PMSG_update(entity[0], lastRow);
+		PMSG_updateSaveId(eref, lastRow);
+		
+		//PrintToChat(client, "[DS] saving eref:%d eid:%d hp:%d dmg:%d rad:%d bot:%d saveid:%d msg:%s", eref, eid, health, damage, radius, breakOnTouch, lastRow, playermsg);
 	}
 	
 	Save_clear(client);
@@ -291,7 +121,7 @@ DB_clearMap(String:map[], client)
 	
 	new Handle:qHandle = SQL_Query(db, query);
 	
-	if (!DB_isOk(qHandle)) return;
+	if (!DB_isOk(qHandle, query)) return;
 	
 	while (SQL_FetchRow(qHandle)) {
 		
@@ -299,7 +129,7 @@ DB_clearMap(String:map[], client)
 		
 		Format(query, sizeof(query), "DELETE FROM save WHERE id='%d'", saveId);
 		
-		if (!SQL_FastQuery(db, query)) DB_printErr();
+		if (!SQL_FastQuery(db, query)) DB_printErr(query);
 	}
 	
 	CloseHandle(qHandle);
@@ -315,7 +145,7 @@ DB_clearWholeMap(String:map[])
 	
 	new Handle:qHandle = SQL_Query(db, query);
 	
-	if (!DB_isOk(qHandle)) return;
+	if (!DB_isOk(qHandle, query)) return;
 	
 	while (SQL_FetchRow(qHandle)) {
 		
@@ -323,10 +153,187 @@ DB_clearWholeMap(String:map[])
 		
 		Format(query, sizeof(query), "DELETE FROM save WHERE id='%d'", saveId);
 		
-		if (!SQL_FastQuery(db, query)) DB_printErr();
+		if (!SQL_FastQuery(db, query)) DB_printErr(query);
 	}
 	
 	CloseHandle(qHandle);
+}
+
+bool:DB_fetchNext(Handle:h, String:query[])
+{
+	if (SQL_FetchRow(h)) return true;
+		
+	PrintToServer("Failed to query %s", query);
+	
+	CloseHandle(h);
+	
+	return false;
+	
+}
+
+DB_printErr(String:query[])
+{
+	new String:error[256];
+	
+	SQL_GetError(db, error, sizeof(error));
+	
+	PrintToServer("Failed to query (error: %s) - %s", error, query);
+}
+
+bool:DB_isOk(Handle:h, String:query[])
+{
+	if (h != INVALID_HANDLE) return true;
+		
+	DB_printErr(query);
+	
+	return false;
+}
+
+DB_lastInsertedRow()
+{
+	new Handle:qHandle = SQL_Query(db, "SELECT last_insert_rowid()");
+	
+	if (!DB_isOk(qHandle, "SELECT last_insert_rowid()")) return -1;
+	
+	if (!DB_fetchNext(qHandle, "SELECT last_insert_rowid()")) return -1;
+				
+	new lastRow = SQL_FetchInt(qHandle, 0);
+	
+	CloseHandle(qHandle);
+	
+	return lastRow;
+}
+
+DB_trapTriggered(clientTableId, saveTableId)
+{
+	decl String:query[256];	
+	Format(query, sizeof(query), "SELECT * FROM traplog WHERE client_id='%d' AND save_id='%d'", clientTableId, saveTableId);
+	new Handle:qHandle = SQL_Query(db, query);
+	
+	if (!DB_isOk(qHandle, query)) return;
+	
+	if (SQL_FetchRow(qHandle))
+		Format(query, sizeof(query), "UPDATE traplog SET trigger_count=trigger_count+1 WHERE client_id='%d' AND save_id='%d'", clientTableId, saveTableId);
+	else
+		Format(query, sizeof(query), "INSERT INTO traplog (client_id, save_id, trigger_count) VALUES('%d','%d', 1)", clientTableId, saveTableId);
+	
+	CloseHandle(qHandle);
+	
+	if (!SQL_FastQuery(db, query)) PrintToServer("Failed to query %s", query);
+}
+
+DB_addMap(String:mapName[])
+{
+	decl String:query[256];
+	
+	Format(query, sizeof(query), "SELECT * FROM map WHERE name='%s'", mapName);
+	
+	new Handle:qHandle = SQL_Query(db, query);
+	
+	if (!DB_isOk(qHandle, query)) return;
+	
+	if (SQL_FetchRow(qHandle)) {
+		
+		CloseHandle(qHandle);
+		
+		return;
+	}
+	
+	CloseHandle(qHandle);
+			
+	Format(query, sizeof(query), "INSERT INTO map (name) VALUES ('%s')", mapName);
+	
+	if (!SQL_FastQuery(db, query)) DB_printErr(query);	
+}
+
+DB_addClient(client)
+{
+	decl String:steamId[256], String:query[256], String:clientName[256];
+	GetClientAuthString(client, steamId, sizeof(steamId));
+	GetClientName(client, clientName, sizeof(clientName));
+	
+	Format(query, sizeof(query), "SELECT * FROM client WHERE authstring='%s'", steamId);
+	
+	new Handle:qHandle = SQL_Query(db, query);
+	
+	if (!DB_isOk(qHandle, query)) return -1;
+	
+	if (SQL_FetchRow(qHandle)) {
+		
+		new clientTableId = SQL_FetchInt(qHandle, 0);
+		
+		CloseHandle(qHandle);
+		
+		return clientTableId;
+	}
+	
+	CloseHandle(qHandle);
+			
+	Format(query, sizeof(query), "INSERT INTO client (name, authstring) VALUES ('%s','%s')", clientName, steamId);
+	
+	if (!SQL_FastQuery(db, query)) {
+		
+		DB_printErr(query);
+		
+		return -1;
+	}
+	
+	new lastRow = DB_lastInsertedRow();
+		
+	if (lastRow < 0) return -1;
+	
+	return lastRow;
+}
+
+static DB_getId(String:table[], String:whereCol[], String:whereVal[])
+{
+	decl String:query[256];
+	Format(query, sizeof(query), "SELECT * FROM %s WHERE %s='%s'", table, whereCol, whereVal);
+	new Handle:qHandle = SQL_Query(db, query);
+	
+	if (!DB_isOk(qHandle, query)) return -1;
+	
+	if (!DB_fetchNext(qHandle, query)) return -1;
+			
+	new id = SQL_FetchInt(qHandle, 0);
+	
+	CloseHandle(qHandle);
+	
+	return id;
+}
+
+DB_getString(String:str[], strLen, colidx, String:table[], val)
+{
+	decl String:query[256];
+	Format(query, sizeof(query), "SELECT * FROM %s WHERE id='%d'", table, val);
+	new Handle:qHandle = SQL_Query(db, query);
+	
+	if (!DB_isOk(qHandle, query)) return;
+	
+	if (!DB_fetchNext(qHandle, query)) return;
+			
+	SQL_FetchString(qHandle, colidx, str, strLen);
+	
+	CloseHandle(qHandle);
+}
+
+DB_IdNamePath(String:nameOrPath[], String:name[], nameLen, String:path[], pathLen)
+{
+	decl String:query[256];
+	Format(query, sizeof(query), "SELECT * FROM model WHERE name='%s' OR path='%s'", nameOrPath, nameOrPath);	
+	new Handle:qHandle = SQL_Query(db, query);
+	
+	if (!DB_isOk(qHandle, query)) return -1;
+	
+	if (!DB_fetchNext(qHandle, query)) return -1;
+			
+	SQL_FetchString(qHandle, 1, name, nameLen);
+	SQL_FetchString(qHandle, 2, path, pathLen);
+	new id = SQL_FetchInt(qHandle, 0);
+	
+	CloseHandle(qHandle);
+	
+	return id;
 }
 
 DB_spawnableAt(index, String:name[], nameLen, String:path[] = "", pathLen = 0)
@@ -337,7 +344,7 @@ DB_spawnableAt(index, String:name[], nameLen, String:path[] = "", pathLen = 0)
 	
 	new Handle:qHandle = SQL_Query(db, query);
 	
-	if (!DB_isOk(qHandle)) return -1;
+	if (!DB_isOk(qHandle, query)) return -1;
 	
 	if (!DB_fetchNext(qHandle, query)) return -1;
 			
@@ -348,7 +355,7 @@ DB_spawnableAt(index, String:name[], nameLen, String:path[] = "", pathLen = 0)
 	new id = SQL_FetchInt(qHandle, 0);
 	
 	CloseHandle(qHandle);
-	
+			
 	return id;
 }
 
@@ -356,7 +363,7 @@ DB_spawnableCount()
 {
 	new Handle:qHandle = SQL_Query(db, "SELECT * FROM model");
 	
-	if (!DB_isOk(qHandle)) return 0;
+	if (!DB_isOk(qHandle, "SELECT * FROM model")) return 0;
 	
 	new count = SQL_GetRowCount(qHandle);
 	
@@ -411,14 +418,16 @@ DB_setUp()
 		map_id INTEGER REFERENCES map(id) ON DELETE CASCADE ON UPDATE CASCADE,\
 		client_id INTEGER REFERENCES client(id) ON DELETE CASCADE ON UPDATE CASCADE,\
 		msg TEXT,\
-		break_on_touch INTEGER DEFAULT 1,\
-		break_on_pressure INTEGER DEFAULT 1\
+		health INTEGER,\
+		damage INTEGER,\
+		radius INTEGER,\
+		break_on_touch INTEGER\
 		)");
 		
 	SQL_Query(db, "CREATE TABLE IF NOT EXISTS traplog (\
 		client_id INTEGER REFERENCES client(id) ON DELETE CASCADE ON UPDATE CASCADE,\
 		save_id INTEGER REFERENCES save(id) ON DELETE CASCADE ON UPDATE CASCADE,\
-		deaths INTEGER DEFAULT 0,\
+		trigger_count INTEGER DEFAULT 0,\
 		primary key (client_id, save_id)\
 	)");
 	
